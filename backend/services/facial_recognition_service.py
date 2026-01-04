@@ -131,7 +131,12 @@ class FacialRecognitionService:
         """Register a new face for an appraiser"""
         try:
             if not self.is_available():
-                raise Exception("Face recognition service not available. Please install required packages.")
+                return {
+                    "success": False,
+                    "message": "Face registration service is currently unavailable. Please try again later or contact support.",
+                    "service_status": "offline",
+                    "error": "InsightFace library not loaded"
+                }
             
             # Convert base64 image to cv2 format
             img = self.base64_to_cv2_image(image)
@@ -171,7 +176,12 @@ class FacialRecognitionService:
         """Recognize an appraiser from face image"""
         try:
             if not self.is_available():
-                raise Exception("Face recognition service not available. Please install required packages.")
+                return {
+                    "recognized": False,
+                    "message": "Face recognition service is currently unavailable. Please try again later or contact support.",
+                    "service_status": "offline",
+                    "error": "InsightFace library not loaded"
+                }
             
             # Convert base64 image to cv2 format
             img = self.base64_to_cv2_image(image)
