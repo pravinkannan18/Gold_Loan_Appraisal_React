@@ -102,7 +102,7 @@ const FacialRecognition = ({ onAppraiserIdentified, onNewAppraiserRequired, onCa
       const formData = new FormData();
       formData.append('image', imageData);
 
-      const response = await fetch('http://localhost:8000/api/face/recognize', {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/face/recognize`, {
         method: 'POST',
         body: formData
       });

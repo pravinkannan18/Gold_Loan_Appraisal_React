@@ -82,7 +82,7 @@ export function AppraisalSummary() {
       setGpsLoading(true);
       setGpsError(null);
       try {
-        const res = await fetch('http://localhost:8000/api/gps/location', {
+        const res = await fetch(`${import.meta.env.VITE_API_URL}/api/gps/location`, {
           credentials: 'include', // if you use auth
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);

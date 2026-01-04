@@ -106,7 +106,7 @@ export function AppraiserDetails() {
       // Register face encoding for future recognition
       try {
         console.log('=== REGISTERING FACE ENCODING ===');
-        const faceResponse = await fetch('http://localhost:8000/api/face/register', {
+        const faceResponse = await fetch(`${import.meta.env.VITE_API_URL}/api/face/register`, {
           method: 'POST',
           body: (() => {
             const formData = new FormData();

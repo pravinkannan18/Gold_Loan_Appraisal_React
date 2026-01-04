@@ -58,7 +58,7 @@ class ApiService {
       return response.json();
     } catch (error: any) {
       if (error.message === 'Failed to fetch') {
-        throw new Error('Backend server is not running. Please start the backend at http://localhost:8000');
+        throw new Error('Backend server is not running. Please check your backend deployment.');
       }
       throw error;
     }
