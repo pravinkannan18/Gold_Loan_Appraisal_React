@@ -36,11 +36,7 @@ data/*.csv
 data/uploads/
 data/exports/
 
-# ML Models (large files)
-ml_models/*.pt
-ml_models/*.pth
-ml_models/*.onnx
-!ml_models/README.md
+
 
 # Temporary files
 *.tmp
