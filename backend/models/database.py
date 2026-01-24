@@ -522,10 +522,11 @@ class Database:
         try:
             # Only fetch 'registered' status rows to avoid confusion with actual sessions
             cursor.execute('''
-                SELECT id, name, appraiser_id, image_data, face_encoding, created_at,
-                       bank, branch, email, phone
-                FROM overall_sessions 
-                WHERE face_encoding IS NOT NULL AND status = 'registered'
+                SELECT m.id, m.name, m.appraiser_id, m.image_data, m.face_encoding, m.created_at,
+                       m.bank, m.branch, m.email, m.phone,
+                       (SELECT COUNT(*) FROM overall_sessions s WHERE s.appraiser_id = m.appraiser_id AND s.status != 'registered') as appraisals_completed
+                FROM overall_sessions m
+                WHERE m.face_encoding IS NOT NULL AND m.status = 'registered'
             ''')
             rows = cursor.fetchall()
             return [dict(row) for row in rows]

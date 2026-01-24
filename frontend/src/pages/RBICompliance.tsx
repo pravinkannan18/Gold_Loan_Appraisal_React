@@ -952,48 +952,47 @@ export function RBICompliance() {
                 </CardContent>
               </Card>
             )}
-
-            {/* Footer Navigation */}
-            <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/80 backdrop-blur-md border-t z-40">
-              <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
-                <Button variant="ghost" onClick={() => navigate('/customer-image')}>
-                  <ArrowLeft className="w-4 h-4 mr-2" /> Back
-                </Button>
-
-                <div className="hidden md:flex items-center gap-6 text-sm">
-                  {gpsLoading ? (
-                    <span className="flex items-center text-muted-foreground"><Loader2 className="w-3 h-3 animate-spin mr-2" />Locating...</span>
-                  ) : gpsData ? (
-                    <span className="flex items-center font-medium text-primary">
-                      <MapPin className="w-3 h-3 mr-1" /> {gpsData.latitude.toFixed(4)}, {gpsData.longitude.toFixed(4)}
-                    </span>
-                  ) : null}
-                </div>
-
-                <div className="flex items-center gap-4">
-                  <div className="hidden sm:block text-right">
-                    <p className="text-xs font-semibold text-primary/80">
-                      {canProceed() ? "Ready to Proceed" : "Steps Incomplete"}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground">
-                      {overallImages.length > 0 ? "Overall images captured" :
-                        capturedItems.length === totalItems ? "All items captured" : "Capture required"}
-                    </p>
-                  </div>
-                  <Button
-                    size="lg"
-                    onClick={handleNext}
-                    disabled={isLoading || !canProceed()}
-                    className={cn(canProceed() ? "animate-pulse shadow-lg shadow-primary/20" : "")}
-                  >
-                    {isLoading ? "Saving..." : "Next Step"} <ArrowRight className="w-4 h-4 ml-2" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-
           </div>
         )}
+
+        {/* Footer Navigation - Always Visible */}
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/80 backdrop-blur-md border-t z-40">
+          <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
+            <Button variant="ghost" onClick={() => navigate('/customer-image')}>
+              <ArrowLeft className="w-4 h-4 mr-2" /> Back
+            </Button>
+
+            <div className="hidden md:flex items-center gap-6 text-sm">
+              {gpsLoading ? (
+                <span className="flex items-center text-muted-foreground"><Loader2 className="w-3 h-3 animate-spin mr-2" />Locating...</span>
+              ) : gpsData ? (
+                <span className="flex items-center font-medium text-primary">
+                  <MapPin className="w-3 h-3 mr-1" /> {gpsData.latitude.toFixed(4)}, {gpsData.longitude.toFixed(4)}
+                </span>
+              ) : null}
+            </div>
+
+            <div className="flex items-center gap-4">
+              <div className="hidden sm:block text-right">
+                <p className="text-xs font-semibold text-primary/80">
+                  {canProceed() ? "Ready to Proceed" : "Steps Incomplete"}
+                </p>
+                <p className="text-[10px] text-muted-foreground">
+                  {overallImages.length > 0 ? "Overall images captured" :
+                    capturedItems.length === totalItems ? "All items captured" : "Capture required"}
+                </p>
+              </div>
+              <Button
+                size="lg"
+                onClick={handleNext}
+                disabled={isLoading || !canProceed()}
+                className={cn(canProceed() ? "animate-pulse shadow-lg shadow-primary/20" : "")}
+              >
+                {isLoading ? "Saving..." : "Next Step"} <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </div>
+          </div>
+        </div>
       </div>
     </ModernDashboardLayout>
   );

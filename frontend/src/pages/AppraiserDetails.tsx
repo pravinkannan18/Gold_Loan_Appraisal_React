@@ -37,14 +37,31 @@ export function AppraiserDetails() {
     }
   }, [getCameraForPage]);
 
-  // Check for captured photo from facial recognition
   useEffect(() => {
+    // Check for captured photo from facial recognition
     const savedPhoto = localStorage.getItem('newAppraiserPhoto');
     if (savedPhoto) {
       setPhoto(savedPhoto);
       // Clear the saved photo so it doesn't persist
       localStorage.removeItem('newAppraiserPhoto');
       showToast('Photo captured from facial recognition. Please provide your details.', 'info');
+    }
+
+    // Check for existing appraiser data (e.g. if navigating back or already logged in)
+    const storedAppraiserStr = localStorage.getItem('currentAppraiser');
+    if (storedAppraiserStr) {
+      try {
+        const storedAppraiser = JSON.parse(storedAppraiserStr);
+        if (storedAppraiser.name) setName(storedAppraiser.name);
+        if (storedAppraiser.bank) setBank(storedAppraiser.bank);
+        if (storedAppraiser.branch) setBranch(storedAppraiser.branch);
+        if (storedAppraiser.email) setEmail(storedAppraiser.email);
+        if (storedAppraiser.phone) setPhone(storedAppraiser.phone);
+        // Don't overwrite photo if newAppraiserPhoto exists, otherwise use stored photo
+        if (!savedPhoto && storedAppraiser.photo) setPhoto(storedAppraiser.photo);
+      } catch (e) {
+        console.error("Failed to parse stored appraiser", e);
+      }
     }
   }, []);
 

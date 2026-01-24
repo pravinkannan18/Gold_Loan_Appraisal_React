@@ -8,8 +8,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../co
 import { StatusBadge } from '../components/ui/status-badge';
 import { ModernDashboardLayout } from '../components/layouts/ModernDashboardLayout';
 import { cn } from '../lib/utils';
-import { PageCameraSelector } from '../components/ui/page-camera-selector';
-import { useCameraDetection } from '../hooks/useCameraDetection';
 import { webrtcService, type SessionStatus } from '../services/webrtc';
 
 /**
@@ -30,8 +28,11 @@ export function WebRTCPurityTesting() {
     const navigate = useNavigate();
 
     // Camera state
-    const [selectedCameraId, setSelectedCameraId] = useState<string>('');
-    const [showCameraSelection, setShowCameraSelection] = useState(true);
+    const [selectedCameraId, setSelectedCameraId] = useState<string>(() => {
+        const saved = localStorage.getItem('camera_purity-testing');
+        console.log('📹 Loaded saved camera for purity-testing:', saved);
+        return saved || '';
+    });
 
     // WebRTC state
     const [isConnected, setIsConnected] = useState(false);
@@ -58,22 +59,6 @@ export function WebRTCPurityTesting() {
     const [connectionMode, setConnectionMode] = useState<'webrtc' | 'websocket' | null>(null);
     const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
 
-    // Camera detection hook
-    const {
-        cameras,
-        permission,
-        isLoading: cameraLoading,
-        error: cameraError,
-        enumerateDevices,
-        requestPermission,
-    } = useCameraDetection();
-
-    // Auto-request camera permission
-    useEffect(() => {
-        if (permission.status === 'prompt') {
-            requestPermission();
-        }
-    }, [permission.status, requestPermission]);
 
     // Load jewelry items from session API on mount
     useEffect(() => {
@@ -367,16 +352,11 @@ export function WebRTCPurityTesting() {
 
     // Connect to WebRTC
     const connectWebRTC = async () => {
-        if (!selectedCameraId) {
-            showToast('Please select a camera first', 'error');
-            return;
-        }
-
         setIsConnecting(true);
         try {
             const session = await webrtcService.connect(
                 localVideoRef.current || undefined,
-                selectedCameraId
+                selectedCameraId || undefined
             );
 
             if (session) {
@@ -505,42 +485,6 @@ export function WebRTCPurityTesting() {
                     )}
                 </div>
 
-                {/* Camera Selection */}
-                {showCameraSelection && (
-                    <Card className="border-warning/50 bg-warning/5">
-                        <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <div className="flex items-center gap-2 text-warning-foreground">
-                                <ScanLine className="w-5 h-5" />
-                                <CardTitle className="text-lg">Camera Setup</CardTitle>
-                            </div>
-                            <div className="flex gap-2">
-                                <Button onClick={enumerateDevices} disabled={cameraLoading} variant="outline" size="sm">
-                                    {cameraLoading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
-                                    Refresh
-                                </Button>
-                                <Button onClick={() => setShowCameraSelection(false)} variant="ghost" size="sm">
-                                    ✕ Close
-                                </Button>
-                            </div>
-                        </CardHeader>
-                        <CardContent>
-                            {permission.status === 'denied' && (
-                                <div className="mb-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg flex items-center gap-2 text-destructive">
-                                    <AlertCircle className="w-5 h-5" />
-                                    <span className="font-semibold">Camera permission denied</span>
-                                </div>
-                            )}
-                            <div className="flex justify-center">
-                                <PageCameraSelector
-                                    context="purity-testing"
-                                    label="Select Analysis Camera"
-                                    onCameraSelected={(camera) => setSelectedCameraId(camera?.deviceId || '')}
-                                    className="w-full max-w-md"
-                                />
-                            </div>
-                        </CardContent>
-                    </Card>
-                )}
 
                 {/* Main Content Grid */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -614,7 +558,7 @@ export function WebRTCPurityTesting() {
                             <CardContent className="space-y-3">
                                 <Button
                                     onClick={toggleConnection}
-                                    disabled={!selectedCameraId || isConnecting}
+                                    disabled={isConnecting}
                                     size="lg"
                                     className={cn(
                                         "w-full font-bold shadow-md transition-all",

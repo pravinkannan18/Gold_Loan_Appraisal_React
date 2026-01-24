@@ -12,6 +12,8 @@ export interface AppraiserProfile {
   lastActive: string;
   appraisalsCompleted: number;
   certification: string;
+  bank?: string;
+  branch?: string;
 }
 
 export interface FacialRecognitionResult {

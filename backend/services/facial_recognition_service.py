@@ -264,7 +264,8 @@ class FacialRecognitionService:
                             "bank": appraiser.get('bank', ''),
                             "branch": appraiser.get('branch', ''),
                             "email": appraiser.get('email', ''),
-                            "phone": appraiser.get('phone', '')
+                            "phone": appraiser.get('phone', ''),
+                            "appraisals_completed": appraiser.get('appraisals_completed', 0)
                         }
                 except Exception as e:
                     print(f"Error processing appraiser {appraiser['name']}: {e}")

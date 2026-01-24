@@ -144,17 +144,19 @@ const FacialRecognition = ({ onAppraiserIdentified, onNewAppraiserRequired, onCa
         // Convert backend response to AppraiserProfile format
         return {
           id: data.appraiser.appraiser_id,
-          appraiser_id: data.appraiser.appraiser_id, // Add this for compatibility
+          appraiser_id: data.appraiser.appraiser_id,
           name: data.appraiser.name,
-          licenseNumber: data.appraiser.appraiser_id, // Use appraiser_id as license number
+          licenseNumber: data.appraiser.appraiser_id,
           department: "Gold Verification", // Default department
-          email: `${data.appraiser.name.toLowerCase().replace(' ', '.')}@bank.com`, // Generate email
-          phone: "+1-555-0000", // Default phone
-          profileImage: "/api/placeholder/150/150",
+          email: data.appraiser.email || "",
+          phone: data.appraiser.phone || "",
+          profileImage: data.appraiser.image_data || "/api/placeholder/150/150",
           lastActive: new Date().toISOString(),
-          appraisalsCompleted: 0, // Default value
+          appraisalsCompleted: data.appraiser.appraisals_completed || 0,
           certification: "Certified Gold Appraiser",
-          faceEncoding: "real_encoding" // Placeholder
+          faceEncoding: "real_encoding",
+          bank: data.appraiser.bank || "",
+          branch: data.appraiser.branch || ""
         };
       }
 
@@ -260,6 +262,8 @@ const FacialRecognition = ({ onAppraiserIdentified, onNewAppraiserRequired, onCa
           department: identifiedAppraiser.department,
           email: identifiedAppraiser.email,
           phone: identifiedAppraiser.phone,
+          bank: identifiedAppraiser.bank || "",
+          branch: identifiedAppraiser.branch || "",
           identificationMethod: "facial_recognition",
           identificationTimestamp: new Date().toISOString(),
           session_id: sessionId,
