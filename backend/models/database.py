@@ -521,7 +521,8 @@ class Database:
         try:
             # Only fetch 'registered' status rows to avoid confusion with actual sessions
             cursor.execute('''
-                SELECT id, name, appraiser_id, image_data, face_encoding, created_at
+                SELECT id, name, appraiser_id, image_data, face_encoding, created_at,
+                       bank, branch, email, phone
                 FROM overall_sessions 
                 WHERE face_encoding IS NOT NULL AND status = 'registered'
             ''')

@@ -138,6 +138,10 @@ export function AppraiserDetails() {
             formData.append('name', name.trim());
             formData.append('appraiser_id', appraiserId);
             formData.append('image', photo);
+            formData.append('bank', bank.trim());
+            formData.append('branch', branch.trim());
+            formData.append('email', email.trim());
+            formData.append('phone', phone.trim());
             return formData;
           })()
         });

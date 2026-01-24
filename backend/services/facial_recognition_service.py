@@ -142,7 +142,9 @@ class FacialRecognitionService:
             "landmark": faces[0].kps.tolist() if hasattr(faces[0], 'kps') else None
         }
     
-    def register_face(self, name: str, appraiser_id: str, image: str) -> Dict[str, Any]:
+    def register_face(self, name: str, appraiser_id: str, image: str,
+                       bank: str = None, branch: str = None, 
+                       email: str = None, phone: str = None) -> Dict[str, Any]:
         """Register a new face for an appraiser"""
         try:
             if not self.is_available():
@@ -171,7 +173,11 @@ class FacialRecognitionService:
                 appraiser_id=appraiser_id,
                 image_data=image,
                 timestamp=datetime.now().isoformat(),
-                face_encoding=embedding_str
+                face_encoding=embedding_str,
+                bank=bank,
+                branch=branch,
+                email=email,
+                phone=phone
             )
             
             return {
@@ -254,7 +260,11 @@ class FacialRecognitionService:
                             "appraiser_id": appraiser['appraiser_id'],
                             "similarity": float(sim),
                             "db_id": appraiser['id'],
-                            "image_data": appraiser.get('image_data', '')
+                            "image_data": appraiser.get('image_data', ''),
+                            "bank": appraiser.get('bank', ''),
+                            "branch": appraiser.get('branch', ''),
+                            "email": appraiser.get('email', ''),
+                            "phone": appraiser.get('phone', '')
                         }
                 except Exception as e:
                     print(f"Error processing appraiser {appraiser['name']}: {e}")

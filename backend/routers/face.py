@@ -15,11 +15,18 @@ def set_service(service):
 async def register_face(
     name: str = Form(...),
     appraiser_id: str = Form(...),
-    image: str = Form(...)
+    image: str = Form(...),
+    bank: str = Form(None),
+    branch: str = Form(None),
+    email: str = Form(None),
+    phone: str = Form(None)
 ):
     """Register a new face for facial recognition"""
     try:
-        result = facial_service.register_face(name, appraiser_id, image)
+        result = facial_service.register_face(
+            name, appraiser_id, image,
+            bank=bank, branch=branch, email=email, phone=phone
+        )
         return result
     except Exception as e:
         print(f"Error in register_face endpoint: {e}")
