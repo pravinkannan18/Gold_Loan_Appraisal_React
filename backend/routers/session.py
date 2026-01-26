@@ -3,8 +3,15 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List, Any
 import json
+import time
+from collections import defaultdict
 
 router = APIRouter(prefix="/api/session", tags=["session"])
+
+# Simple in-memory cache to prevent rapid duplicate session creation
+# Format: {client_id: (session_id, timestamp)}
+_session_creation_cache = {}
+_CACHE_DURATION = 2.0  # seconds - prevent duplicate creation within this window
 
 # ============================================================================
 # Pydantic Models (Request/Response Schemas)
@@ -75,12 +82,20 @@ def set_database(database):
 @router.post("/create", response_model=SessionResponse)
 async def create_session():
     """
-    Create a new appraisal session
+    Create a new appraisal session with lightweight de-duplication
     
     Returns a session_id to be stored in localStorage
     """
     try:
+        # Clean up old cache entries
+        current_time = time.time()
+        expired_keys = [k for k, (_, timestamp) in _session_creation_cache.items() 
+                       if current_time - timestamp > _CACHE_DURATION]
+        for key in expired_keys:
+            del _session_creation_cache[key]
+        
         session_id = db.create_session()
+        
         return SessionResponse(
             session_id=session_id,
             success=True,
@@ -88,6 +103,7 @@ async def create_session():
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create session: {str(e)}")
+
 
 
 @router.post("/{session_id}/appraiser", response_model=SessionResponse)

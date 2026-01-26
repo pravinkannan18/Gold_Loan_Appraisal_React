@@ -6,10 +6,15 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 
+from webrtc.signaling import webrtc_manager
+
 router = APIRouter(prefix="/api/webrtc", tags=["webrtc"])
 
 
-# Request models
+# ============================================================================
+# Request/Response Models
+# ============================================================================
+
 class SDPOffer(BaseModel):
     """SDP offer from frontend"""
     sdp: str
@@ -36,26 +41,26 @@ class TaskUpdate(BaseModel):
 @router.post("/offer")
 async def create_offer(offer: SDPOffer):
     """
-    Process SDP offer from frontend and return answer.
+    Process SDP offer from frontend and return SDP answer.
+    Creates a new WebRTC peer connection session.
     """
-    from webrtc.signaling import webrtc_manager
-    
     if not webrtc_manager.is_available():
         webrtc_manager.initialize()
     
     result = await webrtc_manager.create_session(offer.sdp, offer.type)
     
     if not result.get("success"):
-        raise HTTPException(status_code=500, detail=result.get("error", "Failed to create session"))
+        raise HTTPException(
+            status_code=500,
+            detail=result.get("error", "Failed to create session")
+        )
     
     return result
 
 
 @router.post("/session/create")
 async def create_session():
-    """Create a new WebRTC session"""
-    from webrtc.signaling import webrtc_manager
-    
+    """Create a new WebRTC session without SDP offer"""
     if not webrtc_manager.is_available():
         webrtc_manager.initialize()
     
@@ -65,9 +70,7 @@ async def create_session():
 
 @router.post("/ice")
 async def add_ice_candidate(candidate: ICECandidate):
-    """Add ICE candidate to an existing session."""
-    from webrtc.signaling import webrtc_manager
-    
+    """Add ICE candidate to an existing WebRTC session"""
     result = await webrtc_manager.add_ice_candidate(
         candidate.session_id,
         {
@@ -78,7 +81,10 @@ async def add_ice_candidate(candidate: ICECandidate):
     )
     
     if not result.get("success"):
-        raise HTTPException(status_code=400, detail=result.get("error"))
+        raise HTTPException(
+            status_code=400,
+            detail=result.get("error", "Failed to add ICE candidate")
+        )
     
     return result
 
@@ -89,26 +95,29 @@ async def add_ice_candidate(candidate: ICECandidate):
 
 @router.get("/session/{session_id}")
 async def get_session_status(session_id: str):
-    """Get session status"""
-    from webrtc.signaling import webrtc_manager
-    
+    """Get current status of a WebRTC session"""
     result = webrtc_manager.get_session_status(session_id)
+    
     if "error" in result:
         raise HTTPException(status_code=404, detail=result["error"])
+    
     return result
 
 
 @router.post("/session/{session_id}/task")
 async def update_session_task(session_id: str, update: TaskUpdate):
-    """Update current task for a session"""
-    from webrtc.signaling import webrtc_manager
-    
+    """Update the current task (rubbing/acid/done) for a session"""
     session = webrtc_manager.get_session(session_id)
+    
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     
-    if update.task not in ["rubbing", "acid", "done"]:
-        raise HTTPException(status_code=400, detail="Invalid task")
+    valid_tasks = ["rubbing", "acid", "done"]
+    if update.task not in valid_tasks:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid task. Must be one of: {', '.join(valid_tasks)}"
+        )
     
     session.current_task = update.task
     return {"success": True, "current_task": session.current_task}
@@ -116,47 +125,43 @@ async def update_session_task(session_id: str, update: TaskUpdate):
 
 @router.post("/session/{session_id}/reset")
 async def reset_session(session_id: str):
-    """Reset detection status"""
-    from webrtc.signaling import webrtc_manager
-    
+    """Reset detection status for a session"""
     result = webrtc_manager.reset_session(session_id)
+    
     if not result.get("success"):
-        raise HTTPException(status_code=404, detail=result.get("error"))
+        raise HTTPException(
+            status_code=404,
+            detail=result.get("error", "Failed to reset session")
+        )
+    
     return result
 
 
 @router.delete("/session/{session_id}")
 async def close_session(session_id: str):
-    """Close and cleanup a session"""
-    from webrtc.signaling import webrtc_manager
-    
+    """Close and cleanup a WebRTC session"""
     result = await webrtc_manager.close_session(session_id)
+    
     if not result.get("success"):
-        raise HTTPException(status_code=404, detail=result.get("error"))
+        raise HTTPException(
+            status_code=404,
+            detail=result.get("error", "Session not found")
+        )
+    
     return result
 
 
 # ============================================================================
-# Status Endpoints
+# Status & Health
 # ============================================================================
 
 @router.get("/status")
 async def get_webrtc_status():
-    """Get WebRTC/WebSocket service status"""
-    from webrtc.signaling import webrtc_manager
-    # TODO: Re-enable when inference module is properly set up
-    # from inference.model_manager import get_model_manager
-    
+    """Get WebRTC service availability and configuration status"""
     if not webrtc_manager.initialized:
         webrtc_manager.initialize()
     
-    webrtc_status = webrtc_manager.get_status()
-    # model_status = get_model_manager().get_status()
-    
     return {
-        "webrtc": webrtc_status,
-        "inference": {
-            "available": False,
-            "message": "Inference module not configured"
-        }
+        "webrtc": webrtc_manager.get_status(),
+        "active_sessions": len(webrtc_manager.sessions) if hasattr(webrtc_manager, 'sessions') else 0
     }

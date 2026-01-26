@@ -1,51 +1,7 @@
 """Appraisal API routes"""
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from typing import Optional, List
 
 router = APIRouter(prefix="/api/appraisal", tags=["appraisal"])
-
-# ============================================================================
-# Pydantic Models (Request/Response Schemas)
-# ============================================================================
-
-class JewelleryItem(BaseModel):
-    itemNumber: int
-    image: str
-    description: str
-    weight: Optional[str] = None
-    category: Optional[str] = None
-
-class RBICompliance(BaseModel):
-    customer_photo: str
-    id_proof: str
-    appraiser_with_jewellery: str
-
-class PurityTest(BaseModel):
-    testing_method: str
-    purity: str
-    remarks: Optional[str] = None
-
-class AppraiserDetails(BaseModel):
-    name: str
-    id: str
-    image: str
-    timestamp: str
-
-class AppraisalCreate(BaseModel):
-    appraiser: AppraiserDetails
-    jewellery_items: List[JewelleryItem]
-    rbi_compliance: RBICompliance
-    purity_test: PurityTest
-
-class AppraisalResponse(BaseModel):
-    id: int
-    appraiser_name: str
-    appraiser_id: str
-    total_items: int
-    purity: str
-    created_at: str
-    status: str
 
 # ============================================================================
 # Dependency Injection
@@ -56,28 +12,6 @@ db = None
 def set_database(database):
     global db
     db = database
-
-# ============================================================================
-# POST Endpoints (Create Operations)
-# ============================================================================
-
-@router.post("", response_model=None, status_code=201)
-async def create_appraisal(appraisal: AppraisalCreate):
-    """
-    Create a new appraisal
-    
-    - **appraisal**: Complete appraisal data including appraiser, jewellery items, RBI compliance, and purity test
-    
-    Returns the created appraisal ID
-    """
-    # TODO: Implement full appraisal creation logic
-    # This should:
-    # 1. Validate appraiser exists
-    # 2. Store jewellery items
-    # 3. Store RBI compliance data
-    # 4. Store purity test results
-    # 5. Return created appraisal ID
-    return {"success": True, "message": "Appraisal created", "id": None}
 
 # ============================================================================
 # GET Endpoints (Read Operations)

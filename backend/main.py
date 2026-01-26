@@ -1,23 +1,21 @@
 """
-Gold Loan Appraisal API - Main Application
-Clean architecture with routers, services, and models separation
-WebRTC-based real-time video streaming with aiortc
+Gold Loan Appraisal API
+Backend API for Gold Loan Appraisal System with WebRTC video streaming.
 """
 import os
-
 import warnings
-
-# Suppress ONNX Runtime and other noisy warnings
-warnings.filterwarnings("ignore", category=UserWarning, module="onnxruntime")
-os.environ["ORT_LOG_LEVEL"] = "3"       # 3 is ERROR
-os.environ["ORT_DISABLE_CUDA"] = "1"   # Don't try to load CUDA for ONNX
-os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+from datetime import datetime
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from datetime import datetime
 import uvicorn
 from dotenv import load_dotenv
+
+# Suppress noisy warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="onnxruntime")
+os.environ["ORT_LOG_LEVEL"] = "3"
+os.environ["ORT_DISABLE_CUDA"] = "1"
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 # Load environment variables
 load_dotenv()
@@ -30,10 +28,19 @@ from services.gps_service import GPSService
 from services.classification_service import ClassificationService
 
 # Import routers
-from routers import appraiser, appraisal, camera, face, gps, webrtc, session, classification
+from routers import (
+    appraiser,
+    appraisal,
+    camera,
+    face,
+    gps,
+    webrtc,
+    session,
+    classification
+)
 
 # ============================================================================
-# FastAPI App Initialization
+# Application Setup
 # ============================================================================
 
 app = FastAPI(
@@ -43,10 +50,9 @@ app = FastAPI(
 )
 
 # ============================================================================
-# CORS Middleware
+# CORS Configuration
 # ============================================================================
 
-# Allow all origins for production deployment (Netlify + local dev)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:8080"],  # Allow all origins (Netlify, localhost, etc.)
@@ -57,29 +63,19 @@ app.add_middleware(
 )
 
 # ============================================================================
-# Initialize Services (Singleton Pattern)
+# Service Initialization
 # ============================================================================
 
-# Database
 db = Database()
-
-# Camera Service
 camera_service = CameraService()
-
-# Facial Recognition Service
 facial_service = FacialRecognitionService(db)
-
-# GPS Service
 gps_service = GPSService()
-
-# Classification Service
 classification_service = ClassificationService()
 
 # ============================================================================
-# Dependency Injection for Routers
+# Router Dependency Injection
 # ============================================================================
 
-# Inject dependencies into routers
 appraiser.set_database(db)
 appraisal.set_database(db)
 session.set_database(db)
@@ -102,12 +98,12 @@ app.include_router(webrtc.router)
 app.include_router(classification.router)
 
 # ============================================================================
-# Root Endpoints
+# API Endpoints
 # ============================================================================
 
 @app.get("/")
 async def root():
-    """API information endpoint"""
+    """API information and available endpoints"""
     return {
         "message": "Gold Loan Appraisal API",
         "version": "3.0.0",
@@ -125,19 +121,17 @@ async def root():
         }
     }
 
+
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
-    db_status = db.test_connection()
-    
-    # Import webrtc service for health check
+    """Health check endpoint for monitoring"""
     from webrtc.signaling import webrtc_manager
     
     return {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
         "services": {
-            "database": "connected" if db_status else "disconnected",
+            "database": "connected" if db.test_connection() else "disconnected",
             "camera": "available" if camera_service.check_camera_available() else "unavailable",
             "facial_recognition": "available" if facial_service.is_available() else "unavailable",
             "webrtc": "available" if webrtc_manager.is_available() else "unavailable",
@@ -146,10 +140,12 @@ async def health_check():
         }
     }
 
+
 @app.get("/api/statistics")
 async def get_statistics():
-    """Get overall statistics"""
+    """Get overall system statistics"""
     return db.get_statistics()
+
 
 # ============================================================================
 # Lifecycle Events
@@ -157,29 +153,25 @@ async def get_statistics():
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize database and services on startup"""
-    # Initialize database tables
+    """Initialize services on application startup"""
     db.init_database()
-    
-    # Test database connection
     db.test_connection()
     
-    # Initialize WebRTC and inference
     from webrtc.signaling import webrtc_manager
     webrtc_manager.initialize()
 
+
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Cleanup on shutdown"""
-    # Cleanup WebRTC sessions
+    """Cleanup resources on application shutdown"""
     from webrtc.signaling import webrtc_manager
     await webrtc_manager.cleanup()
     
-    # Close database connections
     db.close()
 
+
 # ============================================================================
-# Run Server
+# Development Server
 # ============================================================================
 
 if __name__ == "__main__":
