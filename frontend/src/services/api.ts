@@ -1,7 +1,9 @@
 // API service for backend communication
+import { TenantMixin } from '../types/tenant';
+
 const API_BASE_URL = import.meta.env.VITE_API_URL;
 
-export interface AppraiserData {
+export interface AppraiserData extends TenantMixin {
   name: string;
   id: string;
   image: string;
@@ -18,7 +20,7 @@ export interface AppraiserResponse {
   message: string;
 }
 
-export interface AppraisalData {
+export interface AppraisalData extends TenantMixin {
   appraiser_id: number;
   customer_front_image: string;
   customer_side_image: string;

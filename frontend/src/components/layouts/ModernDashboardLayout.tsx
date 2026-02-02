@@ -123,13 +123,16 @@ export function ModernDashboardLayout({
                                 <Settings className="w-5 h-5" />
                             </button>
 
-                            {/* User Menu */}
-                            <div className="hidden sm:flex items-center gap-3 ml-2 pl-3 border-l border-nav-foreground/20">
+                            {/* User Menu - Admin Button */}
+                            <button
+                                onClick={() => navigate('/admin')}
+                                className="hidden sm:flex items-center gap-3 ml-2 pl-3 border-l border-nav-foreground/20 hover:bg-nav-hover rounded-lg px-3 py-2 transition-colors cursor-pointer"
+                            >
                                 <div className="flex items-center justify-center w-8 h-8 rounded-full bg-secondary text-secondary-foreground font-semibold text-sm">
                                     A
                                 </div>
-                                <span className="text-nav-foreground text-sm font-medium">Appraiser</span>
-                            </div>
+                                <span className="text-nav-foreground text-sm font-medium">Admin</span>
+                            </button>
 
                             {/* Sign Out */}
                             <Button

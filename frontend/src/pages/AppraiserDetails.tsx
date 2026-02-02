@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Camera, ImageIcon, ArrowLeft, ArrowRight, UserCircle, Shield, AlertCircle, Loader2, CheckCircle, Building, Mail, MapPin, Phone } from 'lucide-react';
+import { Camera, ImageIcon, ArrowLeft, ArrowRight, UserCircle, Shield, AlertCircle, Loader2, CheckCircle, Building, Mail, MapPin, Phone, Search } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/status-badge';
@@ -10,60 +10,64 @@ import { StepIndicator } from '../components/journey/StepIndicator';
 import { LiveCamera, LiveCameraHandle } from '../components/journey/LiveCamera';
 import { apiService } from '../services/api';
 import { generateAppraiserId, showToast } from '../lib/utils';
-import { useCameraDetection } from '../hooks/useCameraDetection';
 
 export function AppraiserDetails() {
   const navigate = useNavigate();
   const cameraRef = useRef<LiveCameraHandle>(null);
   const [name, setName] = useState('');
-  const [bank, setBank] = useState('');
-  const [branch, setBranch] = useState('');
+  const [selectedBankId, setSelectedBankId] = useState<string>('');
+  const [selectedBranchId, setSelectedBranchId] = useState<string>('');
+  const [banks, setBanks] = useState<Array<{id: number, bank_name: string}>>([]);
+  const [branches, setBranches] = useState<Array<{id: number, branch_name: string, bank_id: number}>>([]);
+  const [filteredBranches, setFilteredBranches] = useState<Array<{id: number, branch_name: string, bank_id: number}>>([]);
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [photo, setPhoto] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [isCameraReady, setIsCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState('');
-  const [selectedCameraId, setSelectedCameraId] = useState<string>('');
+  const [verificationStatus, setVerificationStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [verificationMessage, setVerificationMessage] = useState('');
+  const [appraiserData, setAppraiserData] = useState<any>(null);
 
-  const { getCameraForPage } = useCameraDetection();
-
-  // Auto-load saved camera
+  // Load banks and branches data
   useEffect(() => {
-    const savedCamera = getCameraForPage('appraiser-identification');
-    if (savedCamera) {
-      setSelectedCameraId(savedCamera.deviceId);
-    }
-  }, [getCameraForPage]);
-
-  useEffect(() => {
-    // Check for captured photo from facial recognition
-    const savedPhoto = localStorage.getItem('newAppraiserPhoto');
-    if (savedPhoto) {
-      setPhoto(savedPhoto);
-      // Clear the saved photo so it doesn't persist
-      localStorage.removeItem('newAppraiserPhoto');
-      showToast('Photo captured from facial recognition. Please provide your details.', 'info');
-    }
-
-    // Check for existing appraiser data (e.g. if navigating back or already logged in)
-    const storedAppraiserStr = localStorage.getItem('currentAppraiser');
-    if (storedAppraiserStr) {
+    const fetchBanksAndBranches = async () => {
       try {
-        const storedAppraiser = JSON.parse(storedAppraiserStr);
-        if (storedAppraiser.name) setName(storedAppraiser.name);
-        if (storedAppraiser.bank) setBank(storedAppraiser.bank);
-        if (storedAppraiser.branch) setBranch(storedAppraiser.branch);
-        if (storedAppraiser.email) setEmail(storedAppraiser.email);
-        if (storedAppraiser.phone) setPhone(storedAppraiser.phone);
-        // Don't overwrite photo if newAppraiserPhoto exists, otherwise use stored photo
-        if (!savedPhoto && storedAppraiser.photo) setPhoto(storedAppraiser.photo);
-      } catch (e) {
-        console.error("Failed to parse stored appraiser", e);
+        const [banksResponse, branchesResponse] = await Promise.all([
+          fetch(`${import.meta.env.VITE_API_URL}/api/admin/banks`),
+          fetch(`${import.meta.env.VITE_API_URL}/api/admin/branches`)
+        ]);
+        
+        if (banksResponse.ok && branchesResponse.ok) {
+          const banksData = await banksResponse.json();
+          const branchesData = await branchesResponse.json();
+          setBanks(banksData.banks || []);
+          setBranches(branchesData.branches || []);
+        }
+      } catch (error) {
+        console.error('Error loading banks/branches:', error);
+        showToast('Failed to load banks and branches data', 'error');
       }
-    }
+    };
+    
+    fetchBanksAndBranches();
   }, []);
+
+  // Filter branches when bank selection changes
+  useEffect(() => {
+    if (selectedBankId) {
+      const bankId = parseInt(selectedBankId);
+      const filtered = branches.filter(branch => branch.bank_id === bankId);
+      setFilteredBranches(filtered);
+      setSelectedBranchId(''); // Reset branch selection
+    } else {
+      setFilteredBranches([]);
+      setSelectedBranchId('');
+    }
+  }, [selectedBankId, branches]);
 
   const handleOpenCamera = () => {
     setCameraError('');
@@ -99,14 +103,78 @@ export function AppraiserDetails() {
     handleOpenCamera();
   };
 
-  const handleNext = async () => {
+  const handleVerifyAppraiser = async () => {
     if (!name.trim()) {
       showToast('Please enter appraiser name', 'error');
       return;
     }
 
+    if (!selectedBankId) {
+      showToast('Please select a bank', 'error');
+      return;
+    }
+
+    if (!selectedBranchId) {
+      showToast('Please select a branch', 'error');
+      return;
+    }
+
+    setIsVerifying(true);
+    setVerificationStatus('idle');
+    setVerificationMessage('');
+
+    try {
+      // Verify appraiser is registered in the selected bank/branch
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/admin/verify-appraiser`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: name.trim(),
+          bank_id: parseInt(selectedBankId),
+          branch_id: parseInt(selectedBranchId)
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.exists) {
+        setVerificationStatus('success');
+        setVerificationMessage('Appraiser verified successfully!');
+        setAppraiserData(data.appraiser);
+        
+        // Store verified appraiser data
+        localStorage.setItem('currentAppraiser', JSON.stringify({
+          ...data.appraiser,
+          bankName: banks.find(b => b.id === parseInt(selectedBankId))?.bank_name,
+          branchName: branches.find(b => b.id === parseInt(selectedBranchId))?.branch_name
+        }));
+        
+        showToast('Appraiser verification successful!', 'success');
+        
+        // Navigate to next step after verification
+        setTimeout(() => {
+          navigate('/dashboard'); // or wherever the next step should be
+        }, 1500);
+      } else {
+        setVerificationStatus('error');
+        setVerificationMessage('Appraiser not found in the selected bank/branch. Only branch admin can add appraisers to this system.');
+        showToast('Appraiser not registered in selected bank/branch', 'error');
+      }
+    } catch (error) {
+      console.error('Error verifying appraiser:', error);
+      setVerificationStatus('error');
+      setVerificationMessage('Failed to verify appraiser. Please try again.');
+      showToast('Verification failed. Please try again.', 'error');
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  const handleNext = async () => {
     if (!photo) {
-      showToast('Please capture appraiser photo', 'error');
+      showToast('Please capture appraiser photo for facial recognition', 'error');
       return;
     }
 
@@ -120,130 +188,62 @@ export function AppraiserDetails() {
     setIsLoading(true);
 
     try {
-      const appraiserId = generateAppraiserId();
-      const timestamp = new Date().toISOString();
+      if (!appraiserData) {
+        showToast('Please verify appraiser details first', 'error');
+        setIsLoading(false);
+        return;
+      }
 
-      console.log('=== SAVING APPRAISER ===');
-      console.log('Name:', name.trim());
-      console.log('Appraiser ID:', appraiserId);
+      console.log('=== APPRAISER FACIAL RECOGNITION ===');
       console.log('Photo length:', photo.length);
-      console.log('Timestamp:', timestamp);
+      console.log('Appraiser:', appraiserData);
 
-      // Call backend API to save appraiser
-      const response = await apiService.saveAppraiser({
-        name: name.trim(),
-        id: appraiserId,
-        image: photo,
-        timestamp: timestamp,
-        bank: bank.trim(),
-        branch: branch.trim(),
-        email: email.trim(),
-        phone: phone.trim(),
+      // Use facial recognition for identification
+      const formData = new FormData();
+      formData.append('image', photo);
+      formData.append('appraiser_id', appraiserData.id || appraiserData.appraiser_id);
+      formData.append('name', appraiserData.name);
+
+      const faceResponse = await fetch(`${import.meta.env.VITE_API_URL}/api/face/identify`, {
+        method: 'POST',
+        body: formData
       });
 
-      console.log('=== BACKEND RESPONSE ===');
-      console.log('Response:', response);
-      console.log('Database ID:', response.id);
+      const faceData = await faceResponse.json();
 
-      // Register face encoding for future recognition
-      try {
-        console.log('=== REGISTERING FACE ENCODING ===');
-        const faceResponse = await fetch(`${import.meta.env.VITE_API_URL}/api/face/register`, {
+      if (faceResponse.ok && faceData.matches) {
+        console.log('=== FACIAL RECOGNITION SUCCESS ===');
+        console.log('Match confidence:', faceData.confidence);
+        
+        // Create a new session for this appraisal workflow
+        const sessionResponse = await fetch(`${import.meta.env.VITE_API_URL}/api/session/create`, {
           method: 'POST',
-          body: (() => {
-            const formData = new FormData();
-            formData.append('name', name.trim());
-            formData.append('appraiser_id', appraiserId);
-            formData.append('image', photo);
-            formData.append('bank', bank.trim());
-            formData.append('branch', branch.trim());
-            formData.append('email', email.trim());
-            formData.append('phone', phone.trim());
-            return formData;
-          })()
+          headers: { 'Content-Type': 'application/json' }
         });
 
-        const faceData = await faceResponse.json();
-
-        if (!faceResponse.ok) {
-          console.warn('Face registration failed:', faceData.message || 'Unknown error');
-          showToast(`Appraiser saved but facial recognition setup failed: ${faceData.message || 'Unknown error'}`, 'info');
-        } else {
-          console.log('Face encoding registered successfully:', faceData);
+        if (!sessionResponse.ok) {
+          throw new Error('Failed to create appraisal session');
         }
-      } catch (faceError) {
-        console.warn('Face registration error:', faceError);
-        showToast('Appraiser saved but facial recognition setup failed. Manual login will be required.', 'info');
+
+        const sessionData = await sessionResponse.json();
+        console.log('Session created:', sessionData.session_id);
+
+        // Save verified appraiser to session
+        localStorage.setItem('currentSession', JSON.stringify({
+          sessionId: sessionData.session_id,
+          appraiser: appraiserData,
+          verified: true,
+          timestamp: new Date().toISOString()
+        }));
+
+        showToast('Appraiser identification successful!', 'success');
+        navigate('/camera-settings'); // Continue to next step
+      } else {
+        showToast('Facial recognition failed. Photo does not match registered appraiser.', 'error');
       }
-
-      // Create a new session for this appraisal workflow
-      console.log('=== CREATING APPRAISAL SESSION ===');
-      const sessionResponse = await fetch(`${import.meta.env.VITE_API_URL}/api/session/create`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-
-      if (!sessionResponse.ok) {
-        throw new Error('Failed to create appraisal session');
-      }
-
-      const sessionData = await sessionResponse.json();
-      const sessionId = sessionData.session_id;
-      console.log('Session created:', sessionId);
-
-      // Save appraiser data to session in database
-      console.log('=== SAVING APPRAISER TO SESSION ===');
-      const appraiserData = {
-        name: name.trim(),
-        id: appraiserId,
-        image: photo,
-        timestamp: timestamp,
-        photo: photo,  // Include both for compatibility
-        db_id: response.id,
-        bank: bank.trim(),
-        branch: branch.trim(),
-        email: email.trim(),
-        phone: phone.trim(),
-      };
-
-      const saveResponse = await fetch(`${import.meta.env.VITE_API_URL}/api/session/${sessionId}/appraiser`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(appraiserData)
-      });
-
-      if (!saveResponse.ok) {
-        throw new Error('Failed to save appraiser data to session');
-      }
-
-      console.log('Appraiser data saved to session');
-
-      // Store ONLY the session_id in localStorage (tiny, no quota issues)
-      localStorage.setItem('appraisal_session_id', sessionId);
-
-      // Also store minimal appraiser info for quick access (no images)
-      localStorage.setItem('currentAppraiser', JSON.stringify({
-        id: response.id,
-        appraiser_id: appraiserId,
-        name: name.trim(),
-        timestamp: timestamp,
-        session_id: sessionId,
-        bank: bank.trim(),
-        branch: branch.trim(),
-        email: email.trim(),
-        phone: phone.trim()
-      }));
-
-      showToast('Appraiser details saved!', 'success');
-      console.log('=== NAVIGATING TO CUSTOMER IMAGE ===');
-      navigate('/customer-image');
-    } catch (error: any) {
-      console.error('=== ERROR SAVING APPRAISER ===');
-      console.error('Error:', error);
-      console.error('Error message:', error?.message);
-      console.error('Error stack:', error?.stack);
-      const errorMessage = error?.message || 'Failed to save appraiser details';
-      showToast(errorMessage, 'error');
+    } catch (error) {
+      console.error('Error during identification:', error);
+      showToast('Identification failed. Please try again.', 'error');
     } finally {
       setIsLoading(false);
     }
@@ -291,7 +291,6 @@ export function AppraiserDetails() {
                     <LiveCamera
                       ref={cameraRef}
                       currentStepKey={1}
-                      selectedDeviceId={selectedCameraId}
                       displayMode="inline"
                       className="flex-1"
                       onOpen={() => setIsCameraOpen(true)}
@@ -313,8 +312,8 @@ export function AppraiserDetails() {
                       <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center mb-4">
                         <UserCircle className="w-10 h-10 text-muted-foreground" />
                       </div>
-                      <p className="font-semibold text-lg">Appraiser Verification</p>
-                      <p className="text-sm mt-2 max-w-xs text-center">Please open the camera to capture your photo for verification.</p>
+                      <p className="font-semibold text-lg">Appraiser Facial Recognition</p>
+                      <p className="text-sm mt-2 max-w-xs text-center">Please capture your photo for facial identification after verification.</p>
                     </div>
                   )}
                 </div>
@@ -380,10 +379,10 @@ export function AppraiserDetails() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <UserCircle className="w-5 h-5 text-primary" />
-                  Appraiser Details
+                  <Search className="w-5 h-5 text-primary" />
+                  Appraiser Identification
                 </CardTitle>
-                <CardDescription>Enter your details and capture a photo for verification</CardDescription>
+                <CardDescription>Select your bank and branch, then verify your identity</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
@@ -395,7 +394,7 @@ export function AppraiserDetails() {
                       type="text"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      placeholder="e.g., Priya Sharma"
+                      placeholder="Enter your full name"
                       className="flex h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                     />
                     {name && (
@@ -409,70 +408,104 @@ export function AppraiserDetails() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-sm font-medium flex items-center gap-1">
-                      Bank Name
+                      Bank <span className="text-destructive">*</span>
                     </label>
                     <div className="relative">
-                      <input
-                        type="text"
-                        value={bank}
-                        onChange={(e) => setBank(e.target.value)}
-                        placeholder="e.g. HDFC Bank"
+                      <select
+                        value={selectedBankId}
+                        onChange={(e) => setSelectedBankId(e.target.value)}
                         className="flex h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      />
-                      {bank && <div className="absolute right-3 top-1/2 -translate-y-1/2"><Building className="w-4 h-4 text-muted-foreground" /></div>}
+                      >
+                        <option value="">Select Bank</option>
+                        {banks.map((bank) => (
+                          <option key={bank.id} value={bank.id.toString()}>
+                            {bank.bank_name}
+                          </option>
+                        ))}
+                      </select>
+                      {selectedBankId && <div className="absolute right-3 top-1/2 -translate-y-1/2"><Building className="w-4 h-4 text-muted-foreground" /></div>}
                     </div>
                   </div>
 
                   <div className="space-y-2">
                     <label className="text-sm font-medium flex items-center gap-1">
-                      Branch
+                      Branch <span className="text-destructive">*</span>
                     </label>
                     <div className="relative">
-                      <input
-                        type="text"
-                        value={branch}
-                        onChange={(e) => setBranch(e.target.value)}
-                        placeholder="e.g. Indiranagar"
-                        className="flex h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      />
-                      {branch && <div className="absolute right-3 top-1/2 -translate-y-1/2"><MapPin className="w-4 h-4 text-muted-foreground" /></div>}
+                      <select
+                        value={selectedBranchId}
+                        onChange={(e) => setSelectedBranchId(e.target.value)}
+                        disabled={!selectedBankId}
+                        className="flex h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <option value="">Select Branch</option>
+                        {filteredBranches.map((branch) => (
+                          <option key={branch.id} value={branch.id.toString()}>
+                            {branch.branch_name}
+                          </option>
+                        ))}
+                      </select>
+                      {selectedBranchId && <div className="absolute right-3 top-1/2 -translate-y-1/2"><MapPin className="w-4 h-4 text-muted-foreground" /></div>}
                     </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium flex items-center gap-1">
-                      Email ID
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="e.g. appraiser@example.com"
-                        className="flex h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      />
-                      {email && <div className="absolute right-3 top-1/2 -translate-y-1/2"><Mail className="w-4 h-4 text-muted-foreground" /></div>}
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium flex items-center gap-1">
-                      Phone Number
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="tel"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        placeholder="e.g. 9876543210"
-                        className="flex h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      />
-                      {phone && <div className="absolute right-3 top-1/2 -translate-y-1/2"><Phone className="w-4 h-4 text-muted-foreground" /></div>}
-                    </div>
-                  </div>
+                {/* Verification Button */}
+                <div className="pt-2">
+                  <Button
+                    onClick={handleVerifyAppraiser}
+                    disabled={isVerifying || !name.trim() || !selectedBankId || !selectedBranchId}
+                    className="w-full h-11"
+                    variant={verificationStatus === 'success' ? 'default' : 'outline'}
+                  >
+                    {isVerifying ? (
+                      <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Verifying...</>
+                    ) : verificationStatus === 'success' ? (
+                      <><CheckCircle className="w-4 h-4 mr-2" /> Verified</>
+                    ) : (
+                      <><Search className="w-4 h-4 mr-2" /> Verify Appraiser</>
+                    )}
+                  </Button>
                 </div>
+
+                {/* Verification Status Message */}
+                {verificationMessage && (
+                  <div className={cn(
+                    "p-3 rounded-lg text-sm flex items-start gap-2",
+                    verificationStatus === 'success' ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"
+                  )}>
+                    {verificationStatus === 'success' ? (
+                      <CheckCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                    )}
+                    <span>{verificationMessage}</span>
+                  </div>
+                )}
+
+                {/* Appraiser Details Display */}
+                {appraiserData && verificationStatus === 'success' && (
+                  <div className="border rounded-xl p-4 bg-muted/30">
+                    <h4 className="font-medium mb-2 flex items-center gap-2">
+                      <UserCircle className="w-4 h-4" />
+                      Verified Appraiser Details
+                    </h4>
+                    <div className="space-y-1 text-sm text-muted-foreground">
+                      <div className="flex items-center gap-2">
+                        <Mail className="w-3 h-3" />
+                        {appraiserData.email || 'No email on record'}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Phone className="w-3 h-3" />
+                        {appraiserData.phone || 'No phone on record'}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Building className="w-3 h-3" />
+                        {banks.find(b => b.id === parseInt(selectedBankId))?.bank_name} - {filteredBranches.find(b => b.id === parseInt(selectedBranchId))?.branch_name}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -487,14 +520,14 @@ export function AppraiserDetails() {
               </Button>
               <Button
                 onClick={handleNext}
-                disabled={isLoading}
+                disabled={isLoading || verificationStatus !== 'success' || !photo}
                 size="lg"
-                className="shadow-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 border-0 min-w-[150px]"
+                className="shadow-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 border-0 min-w-[150px]"
               >
                 {isLoading ? (
-                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</>
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Identifying...</>
                 ) : (
-                  <>Next Step <ArrowRight className="w-4 h-4 ml-2" /></>
+                  <>Continue <ArrowRight className="w-4 h-4 ml-2" /></>
                 )}
               </Button>
             </div>

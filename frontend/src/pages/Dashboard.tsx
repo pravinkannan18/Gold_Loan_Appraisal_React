@@ -2,12 +2,15 @@ import { useMemo, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, StatCard, FeatureCard } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { ModernDashboardLayout } from "@/components/layouts/ModernDashboardLayout";
 import { StatusBadge, LiveBadge } from "@/components/ui/status-badge";
+import { useTenant } from "@/contexts/TenantContext";
+import Navigation from "@/components/Navigation";
 import {
   LogOut, Camera, FileText, X, CheckCircle, User, Settings,
   Play, Sparkles, Shield, FlaskConical, ChevronRight, Clock,
-  TrendingUp, Activity
+  TrendingUp, Activity, Building2, MapPin, Users
 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -24,6 +27,10 @@ const stageToStepKey: Record<string, number> = {
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const { state, getCurrentTenantInfo } = useTenant();
+  const { currentBank, currentBranch, currentUser, permissions } = state;
+  const tenantInfo = getCurrentTenantInfo();
+  
   const [showCameraTest, setShowCameraTest] = useState(false);
   const [showFacialRecognition, setShowFacialRecognition] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -154,10 +161,12 @@ const Dashboard = () => {
   ];
 
   return (
-    <ModernDashboardLayout notificationCount={2}>
-      <div className="space-y-8 animate-fade-in">
-        {/* Hero Section */}
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary via-primary to-primary/80 p-8 md:p-12">
+    <div>
+      <Navigation />
+      <ModernDashboardLayout notificationCount={2}>
+        <div className="space-y-8 animate-fade-in">
+          {/* Hero Section */}
+          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary via-primary to-primary/80 p-8 md:p-12">
           {/* Background Pattern */}
           <div className="absolute inset-0 opacity-10">
             <div className="absolute -right-20 -top-20 w-80 h-80 rounded-full bg-secondary blur-3xl"></div>
@@ -390,6 +399,7 @@ const Dashboard = () => {
         </DialogContent>
       </Dialog>
     </ModernDashboardLayout>
+    </div>
   );
 };
 

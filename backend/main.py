@@ -36,7 +36,12 @@ from routers import (
     gps,
     webrtc,
     session,
-    classification
+    classification,
+    bank,
+    branch,
+    admin,
+    super_admin,
+    password_reset
 )
 
 # ============================================================================
@@ -77,7 +82,6 @@ classification_service = ClassificationService()
 # ============================================================================
 
 appraiser.set_database(db)
-appraisal.set_database(db)
 session.set_database(db)
 camera.set_service(camera_service)
 face.set_service(facial_service)
@@ -96,6 +100,11 @@ app.include_router(face.router)
 app.include_router(gps.router)
 app.include_router(webrtc.router)
 app.include_router(classification.router)
+app.include_router(bank.router)
+app.include_router(branch.router)
+app.include_router(admin.router)
+app.include_router(super_admin.router)
+app.include_router(password_reset.router)
 
 # ============================================================================
 # API Endpoints
@@ -117,7 +126,11 @@ async def root():
             "face": "/api/face",
             "webrtc": "/api/webrtc",
             "gps": "/api/gps",
-            "classification": "/api/classification"
+            "classification": "/api/classification",
+            "bank": "/api/bank",
+            "branch": "/api/branch",
+            "admin": "/api/admin",
+            "super-admin": "/api/super-admin (hidden)"
         }
     }
 
