@@ -719,6 +719,43 @@ async def get_bank_admins(bank_id: int, db = Depends(get_db)):
         logger.error(f"Error getting bank admins: {e}")
         raise HTTPException(status_code=500, detail=f"Error getting bank admins: {str(e)}")
 
+@router.get("/all-bank-admins", response_model=List[BankAdminResponse])
+async def get_all_bank_admins(db = Depends(get_db)):
+    """Get all bank admins across all banks - Super Admin only
+    
+    This endpoint returns all bank admins in a single query, avoiding N+1 queries.
+    """
+    try:
+        cursor = db.cursor()
+        cursor.execute("""
+            SELECT ba.id, ba.bank_id, ba.email, ba.phone, ba.full_name, ba.is_active, 
+                   ba.created_at, b.bank_name
+            FROM bank_admins ba
+            LEFT JOIN banks b ON ba.bank_id = b.id
+            ORDER BY b.bank_name, ba.created_at DESC
+        """)
+        
+        rows = cursor.fetchall()
+        cursor.close()
+        
+        return [
+            BankAdminResponse(
+                id=row[0],
+                bank_id=row[1],
+                email=row[2],
+                phone=row[3],
+                full_name=row[4],
+                is_active=row[5],
+                created_at=str(row[6]) if row[6] else None,
+                bank_name=row[7]
+            )
+            for row in rows
+        ]
+        
+    except Exception as e:
+        logger.error(f"Error getting all bank admins: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting all bank admins: {str(e)}")
+
 @router.delete("/bank-admin/{admin_id}")
 async def delete_bank_admin(admin_id: int, db = Depends(get_db)):
     """Delete a bank admin (Super Admin only)"""

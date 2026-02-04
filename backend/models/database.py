@@ -1,5 +1,6 @@
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from psycopg2 import pool
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 import json
@@ -8,9 +9,78 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Global connection pool - initialized once at startup
+_connection_pool: Optional[pool.ThreadedConnectionPool] = None
+_db_initialized: bool = False
+
+def get_connection_pool():
+    """Get or create the global connection pool"""
+    global _connection_pool
+    
+    if _connection_pool is not None:
+        return _connection_pool
+    
+    load_dotenv(override=True)
+    
+    host = os.getenv('DB_HOST', '').strip()
+    database_url = os.getenv('DATABASE_URL', '').strip()
+    
+    connection_string = None
+    connection_params = None
+    
+    if host:
+        connection_params = {
+            'host': host,
+            'port': os.getenv('DB_PORT', '5432').strip(),
+            'database': os.getenv('DB_NAME', 'postgres').strip(),
+            'user': os.getenv('DB_USER', 'postgres').strip(),
+            'password': os.getenv('DB_PASSWORD', '').strip(),
+        }
+        if "supabase" in host.lower():
+            connection_params['sslmode'] = 'require'
+    elif database_url:
+        connection_string = database_url.replace('postgresql+psycopg2://', 'postgresql://')
+        if "supabase" in connection_string.lower() and "sslmode" not in connection_string:
+            sep = "&" if "?" in connection_string else "?"
+            connection_string += f"{sep}sslmode=require"
+    else:
+        connection_string = "postgresql://postgres:admin@localhost:5432/gold_loan_appraisal"
+    
+    # Create threaded connection pool with min 2 and max 20 connections
+    if connection_params:
+        _connection_pool = pool.ThreadedConnectionPool(
+            minconn=2,
+            maxconn=20,
+            **connection_params
+        )
+    else:
+        _connection_pool = pool.ThreadedConnectionPool(
+            minconn=2,
+            maxconn=20,
+            dsn=connection_string
+        )
+    
+    return _connection_pool
+
 class Database:
-    def __init__(self):
-        """Initialize Database connection (Supabase/PostgreSQL)"""
+    def __init__(self, skip_init: bool = False):
+        """Initialize Database connection (Supabase/PostgreSQL)
+        
+        Args:
+            skip_init: If True, skip database initialization (for regular requests)
+        """
+        global _db_initialized
+        
+        self._pool = get_connection_pool()
+        
+        # Only initialize database once at startup
+        if not skip_init and not _db_initialized:
+            self._init_connection_params()
+            self.init_database()
+            _db_initialized = True
+    
+    def _init_connection_params(self):
+        """Initialize connection parameters for compatibility"""
         load_dotenv(override=True)
         
         host = os.getenv('DB_HOST', '').strip()
@@ -36,22 +106,24 @@ class Database:
         else:
             self.connection_string = "postgresql://postgres:admin@localhost:5432/gold_loan_appraisal"
             self.connection_params = None
-
-        self.init_database()
     
     def get_connection(self):
+        """Get a connection from the pool"""
         try:
-            if self.connection_params:
-                return psycopg2.connect(**self.connection_params)
-            elif self.connection_string:
-                return psycopg2.connect(self.connection_string)
-            else:
-                raise ValueError("No connection parameters or string available")
+            return self._pool.getconn()
         except Exception as e:
             raise e
     
+    def return_connection(self, conn):
+        """Return a connection to the pool"""
+        try:
+            self._pool.putconn(conn)
+        except Exception:
+            pass
+    
     def reset_database(self):
         """Reset database by dropping all known tables"""
+        global _db_initialized
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
@@ -64,14 +136,15 @@ class Database:
                 cursor.execute(f"DROP TABLE IF EXISTS {table} CASCADE")
             conn.commit()
             print("Database reset successfully.")
-            self.init_database() # Re-init
+            _db_initialized = False  # Allow re-initialization
+            self.init_database()
             return True
         except Exception as e:
             conn.rollback()
             raise e
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
 
     def init_database(self):
         """Initialize database tables with new schema including tenant hierarchy"""
@@ -641,12 +714,12 @@ class Database:
             raise
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
 
     def test_connection(self) -> bool:
         try:
             conn = self.get_connection()
-            conn.close()
+            self.return_connection(conn)
             return True
         except Exception:
             return False
@@ -683,7 +756,7 @@ class Database:
             raise e
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def create_branch(self, bank_id: int, branch_code: str, branch_name: str,
                       branch_address: str = None, branch_city: str = None,
@@ -718,7 +791,7 @@ class Database:
             raise e
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def create_tenant_user(self, user_id: str, bank_id: int, branch_id: int = None,
                           full_name: str = None, email: str = None, phone: str = None,
@@ -749,7 +822,7 @@ class Database:
             raise e
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def get_bank_by_code(self, bank_code: str) -> Optional[Dict[str, Any]]:
         """Get bank details by bank code"""
@@ -761,7 +834,7 @@ class Database:
             return dict(row) if row else None
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def get_branch_by_code(self, bank_id: int, branch_code: str) -> Optional[Dict[str, Any]]:
         """Get branch details by bank_id and branch code"""
@@ -778,7 +851,7 @@ class Database:
             return dict(row) if row else None
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def get_tenant_user_by_id(self, bank_id: int, user_id: str) -> Optional[Dict[str, Any]]:
         """Get tenant user by bank_id and user_id"""
@@ -796,7 +869,7 @@ class Database:
             return dict(row) if row else None
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def get_all_banks(self) -> List[Dict[str, Any]]:
         """Get all active banks"""
@@ -808,7 +881,7 @@ class Database:
             return [dict(row) for row in rows]
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def get_branches_by_bank(self, bank_id: int) -> List[Dict[str, Any]]:
         """Get all branches for a specific bank"""
@@ -826,7 +899,7 @@ class Database:
             return [dict(row) for row in rows]
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def get_tenant_users_by_bank(self, bank_id: int) -> List[Dict[str, Any]]:
         """Get all users for a specific bank"""
@@ -845,7 +918,7 @@ class Database:
             return [dict(row) for row in rows]
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def get_tenant_users_by_branch(self, branch_id: int) -> List[Dict[str, Any]]:
         """Get all users for a specific branch"""
@@ -864,7 +937,7 @@ class Database:
             return [dict(row) for row in rows]
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     # =========================================================================
     # Branch Admin Management Methods
@@ -926,7 +999,7 @@ class Database:
             raise e
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def get_branch_admin_by_email(self, email: str, bank_id: int = None, 
                                   branch_id: int = None) -> Optional[Dict[str, Any]]:
@@ -961,7 +1034,7 @@ class Database:
             return dict(row) if row else None
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def get_branch_admin_by_id(self, admin_id: int) -> Optional[Dict[str, Any]]:
         """Get branch admin by ID"""
@@ -981,7 +1054,7 @@ class Database:
             return dict(row) if row else None
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def get_branch_admins_by_bank(self, bank_id: int) -> List[Dict[str, Any]]:
         """Get all branch admins for a specific bank"""
@@ -1002,7 +1075,7 @@ class Database:
             return [dict(row) for row in rows]
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def get_branch_admins_by_branch(self, branch_id: int) -> List[Dict[str, Any]]:
         """Get all admins for a specific branch"""
@@ -1023,7 +1096,7 @@ class Database:
             return [dict(row) for row in rows]
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def update_branch_admin(self, admin_id: int, 
                            full_name: str = None, email: str = None,
@@ -1075,7 +1148,7 @@ class Database:
             raise e
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def delete_branch_admin(self, admin_id: int) -> bool:
         """Soft delete (deactivate) a branch admin"""
@@ -1094,7 +1167,7 @@ class Database:
             raise e
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def verify_branch_admin_access(self, admin_id: int, bank_id: int, 
                                    branch_id: int) -> bool:
@@ -1113,7 +1186,7 @@ class Database:
             return cursor.fetchone() is not None
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def update_branch_admin_login(self, admin_id: int) -> None:
         """Update last login timestamp for branch admin"""
@@ -1131,7 +1204,7 @@ class Database:
             raise e
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def migrate_legacy_bank_branch_data(self):
         """Migrate existing bank/branch string data to tenant hierarchy"""
@@ -1207,7 +1280,7 @@ class Database:
             raise e
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
 
     # =========================================================================
     # Updated Session Methods with Tenant Support
@@ -1235,7 +1308,7 @@ class Database:
             raise e
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
 
     def _get_common_info(self, cursor, session_id):
         cursor.execute('''
@@ -1312,7 +1385,7 @@ class Database:
             raise e
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
 
     def save_customer_details(self, session_id: str, data: Dict[str, Any]) -> bool:
         conn = self.get_connection()
@@ -1343,7 +1416,7 @@ class Database:
             raise e
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
 
     def save_rbi_compliance(self, session_id: str, data: Dict[str, Any]) -> bool:
         conn = self.get_connection()
@@ -1376,7 +1449,7 @@ class Database:
             raise e
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
 
     def save_purity_details(self, session_id: str, data: Dict[str, Any]) -> bool:
         conn = self.get_connection()
@@ -1414,7 +1487,7 @@ class Database:
             raise e
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
             
     # =========================================================================
     # Compatibility Layer
@@ -1434,7 +1507,7 @@ class Database:
                 return True
             finally:
                 cursor.close()
-                conn.close()
+                self.return_connection(conn)
         return True
 
     def update_session_multiple(self, session_id: str, updates: Dict[str, Any]) -> bool:
@@ -1507,7 +1580,7 @@ class Database:
             return result
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
 
     def delete_session(self, session_id: str) -> bool:
         conn = self.get_connection()
@@ -1518,7 +1591,7 @@ class Database:
             return True
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
 
     def close(self):
         pass
@@ -1627,7 +1700,7 @@ class Database:
             raise e
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
 
     def get_all_appraisers_with_face_encoding(self) -> List[Dict[str, Any]]:
         """Fetch registered appraisers for facial recognition with tenant context"""
@@ -1655,7 +1728,7 @@ class Database:
             return [dict(row) for row in rows]
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
 
     def get_appraisers_by_filters(self, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Fetch registered appraisers with face encoding based on specific filters (bank, branch, name, etc.)"""
@@ -1706,7 +1779,7 @@ class Database:
             return [dict(row) for row in rows]
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
             
     def get_appraiser_by_id(self, appraiser_id: str) -> Optional[Dict[str, Any]]:
         conn = self.get_connection()
@@ -1718,7 +1791,7 @@ class Database:
             return dict(row) if row else None
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     # =========================================================================
     # Appraiser Bank/Branch Mapping Methods
@@ -1742,7 +1815,7 @@ class Database:
             raise e
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def remove_appraiser_from_bank_branch(self, appraiser_id: str, bank_id: int, branch_id: int) -> bool:
         """Remove an appraiser mapping from a bank/branch (soft delete)"""
@@ -1761,7 +1834,7 @@ class Database:
             raise e
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def get_appraiser_bank_branch_mappings(self, appraiser_id: str) -> List[Dict[str, Any]]:
         """Get all bank/branch mappings for an appraiser"""
@@ -1779,7 +1852,7 @@ class Database:
             return [dict(row) for row in cursor.fetchall()]
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def is_appraiser_mapped_to_bank_branch(self, appraiser_id: str, bank_id: int, branch_id: int) -> bool:
         """Check if an appraiser is mapped to a specific bank/branch"""
@@ -1793,7 +1866,7 @@ class Database:
             return cursor.fetchone() is not None
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def get_appraisers_for_bank_branch(self, bank_id: int, branch_id: int) -> List[Dict[str, Any]]:
         """Get all appraisers mapped to a specific bank/branch with their face encodings"""
@@ -1812,7 +1885,7 @@ class Database:
             return [dict(row) for row in cursor.fetchall()]
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def verify_appraiser_exists_in_bank_branch(self, name: str, bank_id: int, branch_id: int) -> Optional[Dict[str, Any]]:
         """
@@ -1888,7 +1961,7 @@ class Database:
             return None
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
 
     def get_statistics(self) -> Dict[str, Any]:
         """Get stats from overall_sessions"""
@@ -1926,7 +1999,7 @@ class Database:
             }
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
 
     # =========================================================================
     # Tenant-Specific Query Methods
@@ -1950,7 +2023,7 @@ class Database:
             return [dict(row) for row in rows]
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def get_sessions_by_branch(self, branch_id: int, limit: int = 50) -> List[Dict[str, Any]]:
         """Get all sessions for a specific branch"""
@@ -1970,7 +2043,7 @@ class Database:
             return [dict(row) for row in rows]
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def get_sessions_by_tenant_user(self, tenant_user_id: int, limit: int = 50) -> List[Dict[str, Any]]:
         """Get all sessions for a specific tenant user (appraiser)"""
@@ -1991,7 +2064,7 @@ class Database:
             return [dict(row) for row in rows]
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def get_bank_dashboard_stats(self, bank_id: int) -> Dict[str, Any]:
         """Get dashboard statistics for a specific bank"""
@@ -2038,15 +2111,26 @@ class Database:
             }
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
+
+
+# Singleton Database instance for FastAPI - initialized once at startup
+_db_instance: Optional[Database] = None
+
+def get_database() -> Database:
+    """Get or create the singleton Database instance"""
+    global _db_instance
+    if _db_instance is None:
+        _db_instance = Database(skip_init=False)  # Initialize DB on first use
+    return _db_instance
 
 
 # FastAPI dependency function for database connection
 def get_db():
-    """FastAPI dependency for database connection"""
-    db = Database()
+    """FastAPI dependency for database connection - uses connection pooling"""
+    db = get_database()  # Use singleton instance (no re-initialization)
     connection = db.get_connection()
     try:
         yield connection
     finally:
-        connection.close()
+        db.return_connection(connection)  # Return to pool instead of closing

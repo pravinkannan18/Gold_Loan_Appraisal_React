@@ -366,10 +366,14 @@ const SuperAdmin: React.FC = () => {
     const token = getToken();
     
     try {
-      const [banksRes, branchesRes, branchAdminsRes] = await Promise.all([
+      // Fetch all data in parallel - including all bank admins in one call
+      const [banksRes, branchesRes, branchAdminsRes, bankAdminsRes] = await Promise.all([
         fetch(`${API_BASE_URL}/api/bank`),
         fetch(`${API_BASE_URL}/api/branch`),
         token ? fetch(`${API_BASE_URL}/api/admin/all-branch-admins`, {
+          headers: { 'X-Super-Admin-Token': token }
+        }) : Promise.resolve({ ok: false }),
+        token ? fetch(`${API_BASE_URL}/api/admin/all-bank-admins`, {
           headers: { 'X-Super-Admin-Token': token }
         }) : Promise.resolve({ ok: false })
       ]);
@@ -377,19 +381,12 @@ const SuperAdmin: React.FC = () => {
       if (banksRes.ok) {
         const banksData = await banksRes.json();
         setBanks(Array.isArray(banksData) ? banksData : []);
-        
-        // Fetch bank admins for all banks
-        if (token && Array.isArray(banksData) && banksData.length > 0) {
-          const adminPromises = banksData.map(bank =>
-            fetch(`${API_BASE_URL}/api/admin/bank-admins/${bank.id}`, {
-              headers: { 'X-Super-Admin-Token': token }
-            }).then(res => res.ok ? res.json() : [])
-          );
-          
-          const adminResults = await Promise.all(adminPromises);
-          const allAdmins = adminResults.flat();
-          setBankAdmins(Array.isArray(allAdmins) ? allAdmins : []);
-        }
+      }
+      
+      // Set bank admins from the single API call (no N+1 queries)
+      if (bankAdminsRes.ok) {
+        const bankAdminsData = await bankAdminsRes.json();
+        setBankAdmins(Array.isArray(bankAdminsData) ? bankAdminsData : []);
       }
 
       if (branchesRes.ok) {

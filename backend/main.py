@@ -21,7 +21,7 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 load_dotenv()
 
 # Import models and services
-from models.database import Database
+from models.database import Database, get_database
 from services.camera_service import CameraService
 from services.facial_recognition_service import FacialRecognitionService
 from services.gps_service import GPSService
@@ -73,7 +73,10 @@ app.add_middleware(
 # Service Initialization
 # ============================================================================
 
-db = Database()
+# Initialize database with connection pooling - runs init_database() once at startup
+db = get_database()
+print("✅ Database connection pool initialized")
+
 camera_service = CameraService()
 facial_service = FacialRecognitionService(db)
 gps_service = GPSService()
